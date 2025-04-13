@@ -1,5 +1,13 @@
 # Paste-cgi
 
+## Description
+This is a dirty pastebin done in CGI. It is completely client-side encrypted and server only stored encrypted paste.
+
+## Images
+![Index](docs/Index.png)
+![Get](docs/get.png)
+
+## Nginx Config
 ```
 server {
 

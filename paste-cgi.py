@@ -4,6 +4,7 @@ import sys
 import random
 import string
 import json
+from datetime import datetime, timezone, timedelta
 
 
 CWD = os.getcwd()
@@ -28,6 +29,13 @@ class SubmitConstants:
     TITLE: str = "title"
     EXPIRATION: str = "expiration"
     PASTED_TEXT: str = "pasted_text"
+    DATE_CREATED: str = "date_created"
+
+
+def convert(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError("Type not serializable")
 
 
 def check_working_dir(allowed_dir):
@@ -130,34 +138,145 @@ def return_favicon_svg():
 
 
 def submit(post_data):
+    if not os.path.exists(DATABASE_DIRECTORY):
+        os.makedirs(DATABASE_DIRECTORY)
+    full_path = ""
+    while True:
+        random_id = generate_random_string()
+        full_path = os.path.join(DATABASE_DIRECTORY, f"{random_id}.json")
+        if not os.path.exists(full_path):
+            break
+
+    data = {
+        SubmitConstants.TYPE: post_data[SubmitConstants.TYPE],
+        SubmitConstants.TITLE: post_data[SubmitConstants.TITLE],
+        SubmitConstants.EXPIRATION: post_data[SubmitConstants.EXPIRATION],
+        SubmitConstants.PASTED_TEXT: post_data[SubmitConstants.PASTED_TEXT],
+        SubmitConstants.DATE_CREATED: datetime.now(timezone.utc),
+    }
+
+    with open(full_path, "w") as json_file:
+        json.dump(data, json_file, indent=4, default=convert)
+
+    print("Content-Type: application/json")
+    print("")
+    print(json.dumps({"id": random_id}))
+
+
+def handle_data(data):
+    expiry = data[SubmitConstants.EXPIRATION]
+    date = datetime.fromisoformat(data[SubmitConstants.DATE_CREATED])
+    date_now = datetime.now(timezone.utc)
+
+    deleted = False
+    delete_after_read = False
+
+    if expiry == "never":
+        pass
+    elif expiry == "burn_after_read":
+        deleted = False
+        delete_after_read = True
+    elif expiry == "10_minutes":
+        if date + timedelta(minutes=10) <= date_now:
+            deleted = True
+    elif expiry == "1_hour":
+        if date + timedelta(hours=1) <= date_now:
+            deleted = True
+    elif expiry == "1_week":
+        if date + timedelta(weeks=1) <= date_now:
+            deleted = True
+    elif expiry == "2_weeks":
+        if date + timedelta(weeks=2) <= date_now:
+            deleted = True
+    elif expiry == "1_month":
+        if date + timedelta(days=30) <= date_now:
+            deleted = True
+    elif expiry == "6_months":
+        if date + timedelta(days=180) <= date_now:
+            deleted = True
+    elif expiry == "1_year":
+        if date + timedelta(days=365) <= date_now:
+            deleted = True
+
+    return delete_after_read, deleted
+
+
+def return_paste(query_string):
+    if query_string is None or not query_string.startswith("id="):
+        print("Content-Type: text/plain")
+        print("")
+        print(query_string)
+        sys.exit(0)
+
+    id = query_string.split("=")
+    if len(id) != 2:
+        print("Content-Type: text/plain")
+        print("")
+        print(query_string)
+        sys.exit(0)
+
+    id = id[1]
+
+    full_path = os.path.join(DATABASE_DIRECTORY, f"{id}.json")
+    directory = os.path.dirname(full_path)
+    os.chdir(directory)
+
+    if os.getcwd() != DATABASE_DIRECTORY:
+        print("Content-Type: text/plain")
+        print("")
+        print("NICE TRY")
+        sys.exit(0)
+
+    if not os.path.exists(full_path):
+        print("Status: 404 Not Found")
+        print("Content-Type: text/plain")
+        print("")
+        print("File not found")
+        print(full_path)
+        sys.exit(0)
+
+    with open(full_path, "r") as file:
+        data = json.load(file)
+
     try:
-        if not os.path.exists(DATABASE_DIRECTORY):
-            os.makedirs(DATABASE_DIRECTORY)
-        full_path = ""
-        while True:
-            random_id = generate_random_string()
-            full_path = os.path.join(DATABASE_DIRECTORY, f"{random_id}.json")
-            if not os.path.exists(full_path):
-                break
+        delete_after_read, deleted = handle_data(data)
 
-        data = {
-            SubmitConstants.TYPE: post_data[SubmitConstants.TYPE],
-            SubmitConstants.TITLE: post_data[SubmitConstants.TITLE],
-            SubmitConstants.EXPIRATION: post_data[SubmitConstants.EXPIRATION],
-            SubmitConstants.PASTED_TEXT: post_data[SubmitConstants.PASTED_TEXT],
-        }
-
-        with open(full_path, "w") as json_file:
-            json.dump(data, json_file, indent=4)
+        if deleted:
+            os.remove(full_path)
+            print("Status: 404 Not Found")
+            print("Content-Type: text/plain")
+            print("")
+            print("File not found")
 
         print("Content-Type: application/json")
         print("")
-        print(json.dumps({"id": random_id}))
-    except Exception as e:
+        print(json.dumps(data, default=convert))
+
+        if delete_after_read:
+            os.remove(full_path)
+
+        sys.exit(0)
+    except Exception:
+        print("Status: 404 Not Found")
         print("Content-Type: text/plain")
         print("")
-        print(str(e))
-        sys.exit(0)
+        print("File not found")
+
+
+def return_get():
+    try:
+        with open("get.html", "r") as file:
+            get_html = file.read()
+
+        print("Content-Type: text/html")
+        print("")
+        print(get_html)
+
+    except Exception:
+        print("Status: 404 Not Found")
+        print("Content-Type: text/html")
+        print("")
+        print("<html><body><h1>404 Not Found</h1></body></html>")
 
 
 allowed_dir = os.environ.get("ALLOWED_DIR", None)
@@ -180,6 +299,10 @@ if method == "GET":
         return_pico_css()
     elif script_name == "/favicon.svg":
         return_favicon_svg()
+    elif script_name == "/get":
+        return_get()
+    elif script_name == "/paste":
+        return_paste(query_string)
 elif method == "POST":
     post_data = sys.stdin.read(content_length)
     post_data = json.loads(post_data)

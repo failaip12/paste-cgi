@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="description" content="AES-256 Encryption Example">
+    <title>Secure Paste</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./pico.min.css">
+</head>
+
+<body>
+    <main class="container">
+        <h1>paste-cgi</h1>
+
+        <form id="cryptoForm">
+            <h3 id="title">Title</h3>
+
+            <div id="passwordField" style="display: none;">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Enter your password" />
+            </div>
+
+            <button type="button" id="decryptBtn" onclick="handleDecrypt()" style="display: none;">Decrypt</button>
+        </form>
+
+        <div id="pasteUrlSection" style="display: none;">
+            <h3>Paste</h3>
+            <textarea id="decryptedOutput" rows="5" readonly></textarea>
+            <button type="button" onclick="copyPaste()">Copy</button>
+        </div>
+    </main>
+
+    <script>
+        let globalData;
+        const pasteTypeConstant = "pasteType";
+        const passwordFieldConstant = "passwordField";
+        const passwordTypeConstant = "password";
+        const decryptButtonConstant = "decryptBtn";
+        const plainTypeConstant = "plain";
+        const titleConstant = "title";
+        const expirationConstant = "expiration";
+        const plaintextConstant = "plaintext";
+        const decryptedOutputConstant = "decryptedOutput"
+        const pasteUrlSectionConstant = "pasteUrlSection"
+
+        window.onload = async function () {
+            const urlParams = new URLSearchParams(window.location.search);
+            const id = urlParams.get('id');
+
+            const fetchUrl = `${window.location.origin}/paste?id=${id}`;
+
+            try {
+                const response = await fetch(fetchUrl);
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+
+                const data = await response.json();
+
+                globalData = data;
+                togglePasteType()
+            } catch (error) {
+                alert("NO File Found")
+                console.error('Error fetching data:', error);
+            }
+        };
+
+        function copyPaste() {
+            var copyText = document.getElementById(decryptedOutputConstant);
+
+            copyText.select();
+            copyText.setSelectionRange(0, 99999);
+
+            navigator.clipboard.writeText(copyText.value);
+        }
+        function togglePasteType() {
+            const decryptButton = document.getElementById(decryptButtonConstant);
+            const passwordField = document.getElementById(passwordFieldConstant);
+            document.getElementById(titleConstant).textContent = globalData.title;
+            if (globalData.type === passwordTypeConstant) {
+                passwordField.style.display = 'block';
+                decryptButton.style.display = 'block';
+            } else {
+                decryptButton.style.display = 'none';
+                passwordField.style.display = 'none';
+                document.getElementById(decryptedOutputConstant).textContent = globalData.pasted_text
+                document.getElementById(pasteUrlSectionConstant).style.display = 'block';
+            }
+        }
+        async function deriveKey(password, salt) {
+            let encodedPassword = new TextEncoder().encode(password);
+            let baseKey = await window.crypto.subtle.importKey(
+                "raw",
+                encodedPassword,
+                { name: "PBKDF2" },
+                false,
+                ["deriveKey"],
+            );
+
+            let derivedKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: salt,
+                    iterations: 600000,
+                    hash: "SHA-256",
+                },
+                baseKey,
+                { name: "AES-GCM", length: 256 },
+                true,
+                ["encrypt", "decrypt"],
+            );
+
+            return derivedKey;
+        }
+
+        async function decryptData(encryptedData, password) {
+            let { ciphertext, iv, authTag, salt } = encryptedData;
+            let key = await deriveKey(password, salt);
+
+            let dataWithAuthTag = new Uint8Array(ciphertext.length + authTag.length);
+            dataWithAuthTag.set(ciphertext, 0);
+            dataWithAuthTag.set(authTag, ciphertext.length);
+
+            let decryptedContent = await window.crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: iv, tagLength: 128 },
+                key,
+                dataWithAuthTag,
+            );
+
+            return new TextDecoder().decode(decryptedContent);
+        }
+        async function handleDecrypt() {
+            let base64 = globalData.pasted_text;
+            let password = document.getElementById(passwordTypeConstant).value;
+            if (!base64 || !password) return alert("Enter encrypted text and password.");
+            try {
+
+                let parsed = JSON.parse(atob(base64));
+                let encryptedData = {
+                    salt: new Uint8Array(Object.values(parsed.salt)),
+                    iv: new Uint8Array(Object.values(parsed.iv)),
+                    authTag: new Uint8Array(Object.values(parsed.authTag)),
+                    ciphertext: new Uint8Array(Object.values(parsed.ciphertext)),
+                };
+
+                let decrypted = await decryptData(encryptedData, password);
+                document.getElementById("decryptedOutput").value = decrypted;
+                document.getElementById(pasteUrlSectionConstant).style.display = 'block';
+            } catch (err) {
+                document.getElementById("decryptedOutput").value = "❌ Decryption failed.";
+            }
+        }
+    </script>
+</body>
+
+</html>

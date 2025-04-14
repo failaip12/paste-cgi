@@ -46,13 +46,33 @@ def check_working_dir(allowed_dir):
         sys.exit(0)
 
 
+def status_405():
+    print("Status: 405 Method Not Allowed")
+    print("Content-Type: text/plain")
+    print("")
+    print("405 Method Not Allowed")
+    sys.exit(0)
+
+
+def status_415():
+    print("Status: 415 Unsupported Media Type")
+    print("Content-Type: text/plain")
+    print("")
+    print("415 Unsupported Media Type.")
+    sys.exit(0)
+
+
+def status_404():
+    print("Status: 404 Not Found")
+    print("Content-Type: text/plain")
+    print("")
+    print("File not found")
+    sys.exit(0)
+
+
 def check_method(method):
     if method not in ["GET", "POST"]:
-        print("Status: 405 Method Not Allowed")
-        print("Content-Type: text/plain")
-        print("")
-        print("405 Method Not Allowed")
-        sys.exit(0)
+        status_405()
 
 
 def get_content_lenght():
@@ -82,59 +102,7 @@ def validate_payload(payload):
             ):
                 if SubmitConstants.PASTED_TEXT in payload:
                     return
-    print("Status: 415 Unsupported Media Type")
-    print("Content-Type: text/plain")
-    print("")
-    print("415 Unsupported Media Type: Expected 'application/json'.")
-    sys.exit(0)
-
-
-def return_index_html():
-    try:
-        with open("index.html", "r") as file:
-            index_html = file.read()
-
-        print("Content-Type: text/html")
-        print("")
-        print(index_html)
-
-    except Exception:
-        print("Status: 404 Not Found")
-        print("Content-Type: text/html")
-        print("")
-        print("<html><body><h1>404 Not Found</h1></body></html>")
-
-
-def return_pico_css():
-    try:
-        with open("pico.min.css", "r") as file:
-            pico_css = file.read()
-
-        print("Content-Type: text/css")
-        print("")
-        print(pico_css)
-
-    except Exception:
-        print("Status: 404 Not Found")
-        print("Content-Type: text/html")
-        print("")
-        print("<html><body><h1>404 Not Found</h1></body></html>")
-
-
-def return_favicon_svg():
-    try:
-        with open("favicon.svg", "r") as file:
-            favicon_svg = file.read()
-
-        print("Content-Type: image/svg+xml")
-        print("")
-        print(favicon_svg)
-
-    except Exception:
-        print("Status: 404 Not Found")
-        print("Content-Type: text/html")
-        print("")
-        print("<html><body><h1>404 Not Found</h1></body></html>")
+    status_415()
 
 
 def submit(post_data):
@@ -203,17 +171,11 @@ def handle_data(data):
 
 def return_paste(query_string):
     if query_string is None or not query_string.startswith("id="):
-        print("Content-Type: text/plain")
-        print("")
-        print(query_string)
-        sys.exit(0)
+        status_415()
 
     id = query_string.split("=")
     if len(id) != 2:
-        print("Content-Type: text/plain")
-        print("")
-        print(query_string)
-        sys.exit(0)
+        status_415()
 
     id = id[1]
 
@@ -222,18 +184,10 @@ def return_paste(query_string):
     os.chdir(directory)
 
     if os.getcwd() != DATABASE_DIRECTORY:
-        print("Content-Type: text/plain")
-        print("")
-        print("NICE TRY")
-        sys.exit(0)
+        status_415()
 
     if not os.path.exists(full_path):
-        print("Status: 404 Not Found")
-        print("Content-Type: text/plain")
-        print("")
-        print("File not found")
-        print(full_path)
-        sys.exit(0)
+        status_404()
 
     with open(full_path, "r") as file:
         data = json.load(file)
@@ -243,10 +197,7 @@ def return_paste(query_string):
 
         if deleted:
             os.remove(full_path)
-            print("Status: 404 Not Found")
-            print("Content-Type: text/plain")
-            print("")
-            print("File not found")
+            status_404()
 
         print("Content-Type: application/json")
         print("")
@@ -257,26 +208,7 @@ def return_paste(query_string):
 
         sys.exit(0)
     except Exception:
-        print("Status: 404 Not Found")
-        print("Content-Type: text/plain")
-        print("")
-        print("File not found")
-
-
-def return_get():
-    try:
-        with open("get.html", "r") as file:
-            get_html = file.read()
-
-        print("Content-Type: text/html")
-        print("")
-        print(get_html)
-
-    except Exception:
-        print("Status: 404 Not Found")
-        print("Content-Type: text/html")
-        print("")
-        print("<html><body><h1>404 Not Found</h1></body></html>")
+        status_404()
 
 
 allowed_dir = os.environ.get("ALLOWED_DIR", None)
@@ -293,15 +225,7 @@ content_length = get_content_lenght()
 
 
 if method == "GET":
-    if script_name == "/":
-        return_index_html()
-    elif script_name == "/pico.min.css":
-        return_pico_css()
-    elif script_name == "/favicon.svg":
-        return_favicon_svg()
-    elif script_name == "/get":
-        return_get()
-    elif script_name == "/paste":
+    if script_name == "/paste":
         return_paste(query_string)
 elif method == "POST":
     post_data = sys.stdin.read(content_length)

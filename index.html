@@ -3,15 +3,16 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="description" content="AES-256 Encryption Example">
-  <title>Secure Paste</title>
+  <title>paste-cgi</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./pico.min.css">
 </head>
 
 <body>
   <main class="container">
-    <h1>paste-cgi</h1>
+    <a href="/">
+      <h1>paste-cgi</h1>
+    </a>
 
     <form id="cryptoForm">
       <label for="title">Title</label>
@@ -54,141 +55,7 @@
       <button type="button" onclick="copyPaste()">Copy</button>
     </div>
   </main>
-
-  <script>
-    const pasteTypeConstant = "pasteType";
-    const passwordFieldConstant = "passwordField";
-    const passwordTypeConstant = "password";
-    const plainTypeConstant = "plain";
-    const titleConstant = "title";
-    const expirationConstant = "expiration";
-    const plaintextConstant = "plaintext";
-    const pasteUrlConstant = "pasteUrl"
-    const pasteUrlSectionConstant = "pasteUrlSection"
-
-    function copyPaste(){
-      var copyText = document.getElementById(pasteUrlConstant);
-
-      copyText.select();
-      copyText.setSelectionRange(0, 99999);
-
-      navigator.clipboard.writeText(copyText.value);
-    }
-
-    function togglePasteType() {
-      const passwordType = document.getElementById(pasteTypeConstant).value;
-      const passwordField = document.getElementById(passwordFieldConstant);
-      if (passwordType === passwordTypeConstant) {
-        passwordField.style.display = 'block';
-      } else {
-        passwordField.style.display = 'none';
-      }
-    }
-
-    async function deriveKey(password, salt) {
-      let encodedPassword = new TextEncoder().encode(password);
-      let baseKey = await window.crypto.subtle.importKey(
-        "raw",
-        encodedPassword,
-        { name: "PBKDF2" },
-        false,
-        ["deriveKey"],
-      );
-
-      let derivedKey = await window.crypto.subtle.deriveKey(
-        {
-          name: "PBKDF2",
-          salt: salt,
-          iterations: 600000,
-          hash: "SHA-256",
-        },
-        baseKey,
-        { name: "AES-GCM", length: 256 },
-        true,
-        ["encrypt", "decrypt"],
-      );
-
-      return derivedKey;
-    }
-
-    async function encryptData(data, password) {
-      let salt = window.crypto.getRandomValues(new Uint8Array(16));
-      let iv = window.crypto.getRandomValues(new Uint8Array(12));
-      let key = await deriveKey(password, salt);
-      let encodedData = new TextEncoder().encode(data);
-
-      let encryptedContent = await window.crypto.subtle.encrypt(
-        {
-          name: "AES-GCM",
-          iv: iv,
-          tagLength: 128,
-        },
-        key,
-        encodedData,
-      );
-
-      let ciphertext = encryptedContent.slice(
-        0,
-        encryptedContent.byteLength - 16,
-      );
-      let authTag = encryptedContent.slice(encryptedContent.byteLength - 16);
-
-      return {
-        ciphertext: new Uint8Array(ciphertext),
-        iv: iv,
-        authTag: new Uint8Array(authTag),
-        salt: salt,
-      };
-    }
-    
-    async function handlePaste() {
-      let type = document.getElementById(pasteTypeConstant).value;
-      let title = document.getElementById(titleConstant).value;
-      let expiration = document.getElementById(expirationConstant).value;
-      let plaintext = document.getElementById(plaintextConstant).value;
-      let password = document.getElementById(passwordTypeConstant).value;
-
-      let pasted_text = ""
-      if (type == plainTypeConstant) {
-        if (!plaintext || !title) return alert("Enter title and paste.");
-
-        pasted_text = plaintext
-      }
-      else {
-        if (!plaintext || !password || !title) return alert("Enter title, paste and password.");
-
-        let encrypted = await encryptData(plaintext, password);
-        pasted_text = btoa(JSON.stringify(encrypted))
-      }
-
-      let currentPath = window.location.origin;
-
-      try {
-        let response = await fetch(currentPath + "/submit", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: type,
-            title: title,
-            expiration: expiration,
-            pasted_text: pasted_text
-          }),
-        });
-
-        if (response.ok) {
-          let jsonResponse = await response.json();
-          document.getElementById(pasteUrlConstant).value = currentPath + "/get?id=" + jsonResponse.id;
-          document.getElementById(pasteUrlSectionConstant).style.display = 'block';
-        } else {
-          console.error("Failed to submit data. Status:", response.status);
-        }
-      } catch (error) {
-        console.error("Error making the POST request:", error);
-      }
-    }
-  </script>
+  <script src="/script.js"></script>
 </body>
 
 </html>

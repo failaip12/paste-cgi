@@ -1,7 +1,7 @@
 # Paste-cgi
 
 ## Description
-This is a dirty pastebin done in CGI. It is completely client-side encrypted and server only stored encrypted paste.
+This is a dirty pastebin done in CGI. It is completely client-side encrypted and server only stores encrypted paste(Title is not encrypted).
 
 ## Images
 ![Index](docs/Index.png)
@@ -10,24 +10,44 @@ This is a dirty pastebin done in CGI. It is completely client-side encrypted and
 ## Nginx Config
 ```
 server {
+    server_name paste.example.com;
+    root /example/root/dir;
 
-    server_name SERVERURL;
-    root ROOTFOLDER;
+    # Global basic Auth 
+    auth_basic "Restricted Content";
+    auth_basic_user_file /etc/nginx/.htpasswd;
 
-    location / {
-        auth_basic "Restricted Content"; # Basic Auth
-        auth_basic_user_file /etc/nginx/.htpasswd; # Basic Auth
+    # Server static files
+    location = / {
+        try_files /index.html =404;
+    }
+
+    location = /get {
+        try_files /get.html =404;
+    }
+
+    location ~* \.(css|js|svg)$ {
+        try_files $uri =404;
+        access_log off;
+        expires 30d;
+    }
+
+    # Handle cgi routes
+    location ~ ^/(paste|submit)$ {
         include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME PATH TO SCRIPT;
+        fastcgi_param SCRIPT_FILENAME /example/path/to/cgi;
         fastcgi_param PATH_INFO $uri;
         fastcgi_param QUERY_STRING $args;
         fastcgi_param HTTP_HOST $server_name;
         fastcgi_param CONTENT_LENGTH $content_length;
         fastcgi_param CONTENT_TYPE $content_type;
-        fastcgi_param ALLOWED_DIR PATH WHERE THE ALLOWED DIRECTORY IS TO CHANGE FILES;
+        fastcgi_param ALLOWED_DIR /example/allowed/dir;
         fastcgi_pass unix:/run/fcgiwrap.socket;
     }
-
+    # Deny everything else
+    location / {
+        return 403;
+    }
 
     listen [::]:443 ssl; # managed by Certbot
     listen 443 ssl; # managed by Certbot

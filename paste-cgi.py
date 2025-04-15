@@ -173,13 +173,13 @@ def return_paste(query_string):
     if query_string is None or not query_string.startswith("id="):
         status_415()
 
-    id = query_string.split("=")
-    if len(id) != 2:
+    parts = query_string.split("=")
+    if len(parts) != 2 or not parts[1]:
         status_415()
 
-    id = id[1]
+    paste_id = parts[1]
 
-    full_path = os.path.join(DATABASE_DIRECTORY, f"{id}.json")
+    full_path = os.path.join(DATABASE_DIRECTORY, f"{paste_id}.json")
     directory = os.path.dirname(full_path)
     os.chdir(directory)
 

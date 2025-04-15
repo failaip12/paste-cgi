@@ -1,5 +1,7 @@
 const pasteTypeConstant = "pasteType";
 const passwordFieldConstant = "passwordField";
+const titleEncryptConstant = 'titleEncrypt';
+const titleEncryptFieldConstant = 'titleEncryptField';
 const passwordTypeConstant = "password";
 const plainTypeConstant = "plain";
 const titleConstant = "title";
@@ -7,7 +9,7 @@ const expirationConstant = "expiration";
 const plaintextConstant = "plaintext";
 const pasteUrlConstant = "pasteUrl";
 const pasteUrlSectionConstant = "pasteUrlSection";
-const decryptedOutputConstant = "decryptedOutput";
+const decryptedPasteConstant = "decryptedPaste";
 const decryptButtonConstant = "decryptBtn";
 
 let globalData;
@@ -16,7 +18,7 @@ function copyPaste() {
     const copyText = document.getElementById(
         document.getElementById(pasteUrlConstant)
             ? pasteUrlConstant
-            : decryptedOutputConstant
+            : decryptedPasteConstant
     );
     copyText.select();
     copyText.setSelectionRange(0, 99999);
@@ -27,19 +29,27 @@ function togglePasteType() {
     const passwordType = document.getElementById(pasteTypeConstant)?.value || globalData?.type;
     const passwordField = document.getElementById(passwordFieldConstant);
     const decryptButton = document.getElementById(decryptButtonConstant);
+    const titleEncryptField = document.getElementById(titleEncryptFieldConstant);
 
     if (document.getElementById(titleConstant) && globalData?.title) {
-        document.getElementById(titleConstant).textContent = "Title:" + globalData.title;
+        if(!globalData?.title_encrypted) {
+            document.getElementById(titleConstant).textContent = "Title: " + globalData.title;
+        }
+        else {
+            document.getElementById(titleConstant).textContent = "Title: (ENCRYPTED)";
+        }
     }
 
     if (passwordType === passwordTypeConstant) {
         passwordField.style.display = "block";
         if (decryptButton) decryptButton.style.display = "block";
+        if (titleEncryptField) titleEncryptField.style.display = "block";
     } else {
         passwordField.style.display = "none";
         if (decryptButton) decryptButton.style.display = "none";
-        if (document.getElementById(decryptedOutputConstant)) {
-            document.getElementById(decryptedOutputConstant).textContent = globalData?.pasted_text || "";
+        if (titleEncryptField) titleEncryptField.style.display = "none";
+        if (document.getElementById(decryptedPasteConstant)) {
+            document.getElementById(decryptedPasteConstant).textContent = globalData?.pasted_text || "";
         }
         document.getElementById(pasteUrlSectionConstant).style.display = "block";
     }
@@ -98,7 +108,14 @@ async function encryptData(data, password) {
     };
 }
 
-async function decryptData(encryptedData, password) {
+async function decryptData(base64, password) {
+    const parsed = JSON.parse(atob(base64));
+    const encryptedData = {
+        salt: new Uint8Array(Object.values(parsed.salt)),
+        iv: new Uint8Array(Object.values(parsed.iv)),
+        authTag: new Uint8Array(Object.values(parsed.authTag)),
+        ciphertext: new Uint8Array(Object.values(parsed.ciphertext)),
+    };
     const { ciphertext, iv, authTag, salt } = encryptedData;
     const key = await deriveKey(password, salt);
 
@@ -118,19 +135,28 @@ async function decryptData(encryptedData, password) {
 async function handlePaste() {
     const type = document.getElementById(pasteTypeConstant).value;
     const title = document.getElementById(titleConstant).value;
+    const titleEncrypted = document.getElementById(titleEncryptConstant).checked;
     const expiration = document.getElementById(expirationConstant).value;
     const plaintext = document.getElementById(plaintextConstant).value;
     const password = document.getElementById(passwordTypeConstant).value;
 
     let pasted_text = "";
-
+    let final_title = "";
     if (type === plainTypeConstant) {
         if (!plaintext || !title) return alert("Enter title and paste.");
         pasted_text = plaintext;
+        final_title = title;
     } else {
         if (!plaintext || !password || !title) return alert("Enter title, paste and password.");
-        const encrypted = await encryptData(plaintext, password);
-        pasted_text = btoa(JSON.stringify(encrypted));
+        const encryptedText = await encryptData(plaintext, password);
+        pasted_text = btoa(JSON.stringify(encryptedText));
+        if(titleEncrypted) {
+            const encryptedTitle = await encryptData(title, password);
+            final_title = btoa(JSON.stringify(encryptedTitle));
+        }
+        else {
+            final_title = title;
+        }
     }
 
     const currentPath = window.location.origin;
@@ -143,9 +169,10 @@ async function handlePaste() {
             },
             body: JSON.stringify({
                 type: type,
-                title: title,
                 expiration: expiration,
                 pasted_text: pasted_text,
+                title: final_title,
+                title_encrypted: titleEncrypted,
             }),
         });
 
@@ -162,25 +189,19 @@ async function handlePaste() {
 }
 
 async function handleDecrypt() {
-    const base64 = globalData.pasted_text;
     const password = document.getElementById(passwordTypeConstant).value;
-    if (!base64 || !password) return alert("Enter encrypted text and password.");
 
-    try {
-        const parsed = JSON.parse(atob(base64));
-        const encryptedData = {
-            salt: new Uint8Array(Object.values(parsed.salt)),
-            iv: new Uint8Array(Object.values(parsed.iv)),
-            authTag: new Uint8Array(Object.values(parsed.authTag)),
-            ciphertext: new Uint8Array(Object.values(parsed.ciphertext)),
-        };
-
-        const decrypted = await decryptData(encryptedData, password);
-        document.getElementById(decryptedOutputConstant).value = decrypted;
-        document.getElementById(pasteUrlSectionConstant).style.display = "block";
-    } catch (err) {
-        document.getElementById(decryptedOutputConstant).value = "❌ Decryption failed.";
+    const pasted_text = await decryptData(globalData?.pasted_text, password);
+    let title = "";
+    if(globalData?.title_encrypted) {
+        title = await decryptData(globalData?.title, password);
     }
+    else {
+        title = globalData?.title;
+    }
+    document.getElementById(decryptedPasteConstant).value = pasted_text;
+    document.getElementById(pasteUrlSectionConstant).style.display = "block";
+    document.getElementById(titleConstant).textContent = "Title: " + title;
 }
 
 async function loadPasteFromUrl() {

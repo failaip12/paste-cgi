@@ -27,6 +27,7 @@ ALLOWED_EXPIRATIONS = [
 class SubmitConstants:
     TYPE: str = "type"
     TITLE: str = "title"
+    TITLE_ENCRYPTED: str = "title_encrypted"
     EXPIRATION: str = "expiration"
     PASTED_TEXT: str = "pasted_text"
     DATE_CREATED: str = "date_created"
@@ -91,18 +92,19 @@ def generate_random_string():
 
 
 def validate_payload(payload):
-    if (
-        SubmitConstants.TYPE in payload
-        and payload[SubmitConstants.TYPE] in ALLOWED_TYPES
-    ):
-        if SubmitConstants.TITLE in payload:
-            if (
-                SubmitConstants.EXPIRATION in payload
-                and payload[SubmitConstants.EXPIRATION] in ALLOWED_EXPIRATIONS
-            ):
-                if SubmitConstants.PASTED_TEXT in payload:
-                    return
-    status_415()
+    if not isinstance(payload, dict):
+        status_415()
+    if SubmitConstants.TYPE not in payload or payload[SubmitConstants.TYPE] not in ALLOWED_TYPES:
+        status_415()
+    if SubmitConstants.TITLE_ENCRYPTED not in payload:
+         status_415()
+    if SubmitConstants.TITLE not in payload:
+         status_415()
+    if SubmitConstants.EXPIRATION not in payload or payload[SubmitConstants.EXPIRATION] not in ALLOWED_EXPIRATIONS:
+        status_415()
+    if SubmitConstants.PASTED_TEXT not in payload:
+        status_415()
+    
 
 
 def submit(post_data):
@@ -116,15 +118,26 @@ def submit(post_data):
             break
 
     data = {
-        SubmitConstants.TYPE: post_data[SubmitConstants.TYPE],
-        SubmitConstants.TITLE: post_data[SubmitConstants.TITLE],
-        SubmitConstants.EXPIRATION: post_data[SubmitConstants.EXPIRATION],
-        SubmitConstants.PASTED_TEXT: post_data[SubmitConstants.PASTED_TEXT],
+        SubmitConstants.TYPE: post_data.get(SubmitConstants.TYPE),
+        SubmitConstants.TITLE: post_data.get(SubmitConstants.TITLE),
+        SubmitConstants.TITLE_ENCRYPTED: post_data.get(SubmitConstants.TITLE_ENCRYPTED),
+        SubmitConstants.EXPIRATION: post_data.get(SubmitConstants.EXPIRATION),
+        SubmitConstants.PASTED_TEXT: post_data.get(SubmitConstants.PASTED_TEXT),
         SubmitConstants.DATE_CREATED: datetime.now(timezone.utc),
     }
 
-    with open(full_path, "w") as json_file:
-        json.dump(data, json_file, indent=4, default=convert)
+    if None in data.values():
+         status_415()
+
+    try:
+        with open(full_path, "w") as json_file:
+            json.dump(data, json_file, indent=4, default=convert)
+    except IOError as e:
+        print("Status: 500 Internal Server Error")
+        print("Content-Type: text/plain")
+        print("")
+        print(f"Error writing to file: {e}")
+        sys.exit(1)
 
     print("Content-Type: application/json")
     print("")
